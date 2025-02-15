@@ -16,3 +16,5 @@ connectDB()
     });
   })
   .catch((error) => console.log("MongoDB connection Failed !! ", error));
+
+export default app; // ✅ Required for Vercel deployment
