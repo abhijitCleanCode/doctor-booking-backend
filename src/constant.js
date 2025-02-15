@@ -1,0 +1,1 @@
+export const DB_NAME = "book_my_doct";
