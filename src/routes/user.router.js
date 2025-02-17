@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { otpLimiter, SEND_OTP } from "../utils/otp.utils.js";
 import {
+  CREATE_APPOINTMENT,
   GET_ALL_DOCTORS,
   GET_CLINIC_DETAILS_FOR_USER,
   GET_DOCTOR_BY_ID,
@@ -23,7 +24,7 @@ userRouter.post("/logout", LOGOUTUSER);
 userRouter.get("/doctors/getalldoctors", GET_ALL_DOCTORS);
 userRouter.get("/doctors/getdoctorbyid/:doctorId", GET_DOCTOR_BY_ID);
 userRouter.get("/clinicdetails/:clinicId", GET_CLINIC_DETAILS_FOR_USER);
-// create appointment api is yet to implemented
+userRouter.post("/create-appointments", VERIFY_FOR_USER, CREATE_APPOINTMENT);
 // get all appointment
 // get appointment by id
 // get doctor slot api is yet to implemented

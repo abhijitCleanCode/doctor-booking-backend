@@ -104,7 +104,7 @@ export const SIGNUPUSER = asyncHandler(async (request, response) => {
       .select("-password -refreshToken")
       .session(session);
     if (!createdUser) {
-      throw new ApiError(500, "User registration failed!");
+      throw new ApiError(500, "Uh oh! User registration failed");
     }
 
     // Commit the transaction
@@ -263,6 +263,7 @@ export const GET_DOCTOR_BY_ID = asyncHandler(async (req, res) => {
   }
 });
 
+const genders = ["male", "female", "other"];
 // create doctor appointment
 // Ensure Razorpay instance is properly initialized
 export const CREATE_APPOINTMENT = asyncHandler(async (req, res) => {
@@ -375,6 +376,15 @@ export const CREATE_APPOINTMENT = asyncHandler(async (req, res) => {
     // ✅ Fetch Platform Fee
     const platformData = await AdminCommission.findOne({});
     const platformFee = platformData?.platFormFee || 1;
+
+    console.log(
+      "\nplatformFee :: ",
+      platformFee,
+      "\nplatformData :: ",
+      platformData,
+      "\nreq.user :: ",
+      req.user
+    );
 
     // ✅ Razorpay Payment Metadata
     const metadata = {
@@ -625,6 +635,175 @@ export const GET_DOCTOR_SLOTS = asyncHandler(async (req, res) => {
     throw new ApiError(
       error.code || 500,
       error.message || "Internal Server Error"
+    );
+  }
+});
+
+export const CREATEAPPOINTMENT = asyncHandler(async (request, response) => {
+  const {
+    doctorId,
+    scheduledId,
+    fullName,
+    phoneNumber,
+    age,
+    gender,
+    healthInsured,
+    clinicId,
+    billingAddress,
+    termsAccepted,
+    appointmentDate,
+  } = request.body;
+
+  if (
+    !doctorId ||
+    !scheduledId ||
+    !fullName ||
+    !phoneNumber ||
+    !age ||
+    !gender ||
+    !clinicId ||
+    !appointmentDate
+  ) {
+    throw new ApiError(400, "All required fields must be filled");
+  }
+
+  const validDateRegex =
+    /^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-(19|20)\d{2}$/;
+  if (!validDateRegex.test(appointmentDate)) {
+    throw new ApiError(400, "Invalid date format. Accepted format: dd-mm-yyyy");
+  }
+
+  if (
+    typeof termsAccepted !== "boolean" ||
+    typeof healthInsured !== "boolean"
+  ) {
+    throw new ApiError(
+      400,
+      "Terms and conditions and health insurance are required"
+    );
+  }
+
+  if (!termsAccepted) {
+    throw new ApiError(400, "Please accept the terms and conditions");
+  }
+
+  // Start a MongoDB session
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const clinic = await Clinic.findById(clinicId).session(session);
+    if (!clinic) {
+      throw new ApiError(404, "Clinic not found");
+    }
+
+    const doctor = await Doctor.findOne({
+      _id: doctorId,
+      clinics: clinicId,
+    }).session(session);
+    if (!doctor) {
+      throw new ApiError(404, "Doctor not found");
+    }
+
+    const clinicSchedule = doctor.appointmentsSchedule.find(
+      (schedule) => schedule.clinicId.toString() === clinicId.toString()
+    );
+
+    if (!clinicSchedule) {
+      throw new ApiError(404, "Clinic schedule not found");
+    }
+
+    const scheduleIndex = clinicSchedule.schedule.findIndex(
+      (appointment) => appointment._id.toString() === scheduledId.toString()
+    );
+
+    if (scheduleIndex === -1) {
+      throw new ApiError(404, "Appointment schedule not found");
+    }
+
+    const appointmentDay = clinicSchedule.schedule[scheduleIndex].day;
+    const appointmentTimeFrom =
+      clinicSchedule.schedule[scheduleIndex].startTime;
+    const appointmentTimeTo = clinicSchedule.schedule[scheduleIndex].endTime;
+    const maxSlots = clinicSchedule.schedule[scheduleIndex].maxSlots;
+
+    const bookedSlot = await Appointment.countDocuments({
+      clinicId,
+      doctor: doctorId,
+      appointmentDate,
+      appointmentTimeFrom,
+      appointmentTimeTo,
+    }).session(session);
+
+    if (bookedSlot >= maxSlots) {
+      throw new ApiError(
+        400,
+        "Maximum limit for appointment reached. Please choose another date or time available."
+      );
+    }
+
+    gender = gender.toLowerCase();
+    if (!genders.includes(gender)) {
+      throw new ApiError(400, "Invalid gender");
+    }
+
+    const platForm = await AdminCommission.findOne({}).session(session);
+    const platFormFee = platForm?.platFormFee || 1;
+
+    const metadata = {
+      userId: request.user._id,
+      appointmentDate,
+      doctorId,
+      appointmentDay,
+      appointmentTimeFrom,
+      appointmentTimeTo,
+      fullName,
+      phoneNumber,
+      age,
+      gender,
+      healthInsured,
+      clinicId,
+      billingAddress,
+      termsAccepted,
+    };
+
+    // Create Razorpay order
+    const options = {
+      amount: platFormFee * 100,
+      currency: "INR",
+      receipt: `receipt_${request?.user?._id}`,
+      payment_capture: 1, // Auto capture the payment
+      notes: metadata,
+    };
+
+    const order = await razorpayInstance.orders.create(options);
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Return success response
+    return response.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          order_id: order.id,
+          amount: platFormFee * 100,
+          key_id: process.env.RAZORPAY_KEY_ID,
+          user: request?.user._id,
+        },
+        "Razorpay order created successfully"
+      )
+    );
+  } catch (error) {
+    // Abort the transaction in case of an error
+    await session.abortTransaction();
+    session.endSession();
+
+    // Handle the error
+    throw new ApiError(
+      error.code || 500,
+      error.message || "Something went wrong"
     );
   }
 });
