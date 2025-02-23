@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 // import routes
 import clinicRouter from "./routes/clinic.routes.js";
 import userRouter from "./routes/user.router.js";
+import doctorRouter from "./routes/doctor.routes.js";
 
 // build express app
 const app = express();
@@ -26,5 +27,6 @@ app.use(cookieParser());
 
 app.use("/api/v1/clinic", clinicRouter);
 app.use("/api/v1/user", userRouter);
+app.use("/api/v1/doctor", doctorRouter);
 
 export { app };

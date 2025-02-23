@@ -6,6 +6,7 @@ import {
   DELETE_DOCTOR,
   GET_ALL_APPOINTMENTS_CLINIC,
   GET_ALL_DOCTORS_BY_CLINIC,
+  GET_CLINIC_BY_CITIES,
   GET_CLINICS_DETAILS,
   GET_DOCTOR_BY_ID,
   GET_DOCTOR_BY_REGISTRATION_NUMBER,
@@ -65,5 +66,6 @@ clinicRouter.get(
   VERIFY_FOR_CLINIC,
   GET_ALL_APPOINTMENTS_CLINIC
 );
+clinicRouter.route("/get-clinic-by-city/:city").get(GET_CLINIC_BY_CITIES);
 
 export default clinicRouter;

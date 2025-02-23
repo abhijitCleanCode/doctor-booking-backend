@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 import { OTP } from "../models/otp.model.js";
 import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.utils.js";
@@ -207,8 +208,6 @@ export const LOGOUTUSER = asyncHandler(async (request, response) => {
     .clearCookie("refreshToken", options)
     .json(new ApiResponse(200, null, "User logged out successfully!"));
 });
-
-// update user details
 
 export const GET_ALL_DOCTORS = asyncHandler(async (req, res) => {
   // Fetch platform fee, defaulting to 1 if not found
@@ -438,12 +437,20 @@ export const CREATE_APPOINTMENT = asyncHandler(async (req, res) => {
 export const APPOINTMENT_WEB_HOOK = async (req, res) => {
   try {
     const signature = req.headers["x-razorpay-signature"];
-    const isValid = validateWebhookSignature(
-      JSON.stringify(req.body),
-      signature,
-      process.env.RAZORPAY_WEBHOOK_SECRET
-    );
+    const razorpaySecret = process.env.RAZORPAY_KEY_SECRET;
+    console.log("signature :: ", signature);
+
+    function verifyWebhookSignature(body, signature, secret) {
+      const expectedSignature = crypto
+        .createHmac("sha256", secret)
+        .update(JSON.stringify(body))
+        .digest("hex");
+      return expectedSignature === signature;
+    }
+
+    const isValid = verifyWebhookSignature(req.body, signature, razorpaySecret);
     console.log("IsValid", isValid);
+
     if (isValid) {
       const { event, payload } = req.body;
       switch (event) {
@@ -639,171 +646,224 @@ export const GET_DOCTOR_SLOTS = asyncHandler(async (req, res) => {
   }
 });
 
-export const CREATEAPPOINTMENT = asyncHandler(async (request, response) => {
-  const {
-    doctorId,
-    scheduledId,
-    fullName,
-    phoneNumber,
-    age,
-    gender,
-    healthInsured,
-    clinicId,
-    billingAddress,
-    termsAccepted,
-    appointmentDate,
-  } = request.body;
-
-  if (
-    !doctorId ||
-    !scheduledId ||
-    !fullName ||
-    !phoneNumber ||
-    !age ||
-    !gender ||
-    !clinicId ||
-    !appointmentDate
-  ) {
-    throw new ApiError(400, "All required fields must be filled");
-  }
-
-  const validDateRegex =
-    /^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-(19|20)\d{2}$/;
-  if (!validDateRegex.test(appointmentDate)) {
-    throw new ApiError(400, "Invalid date format. Accepted format: dd-mm-yyyy");
-  }
-
-  if (
-    typeof termsAccepted !== "boolean" ||
-    typeof healthInsured !== "boolean"
-  ) {
-    throw new ApiError(
-      400,
-      "Terms and conditions and health insurance are required"
-    );
-  }
-
-  if (!termsAccepted) {
-    throw new ApiError(400, "Please accept the terms and conditions");
-  }
-
-  // Start a MongoDB session
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+export const GET_ALL_DATA = async (req, res) => {
   try {
-    const clinic = await Clinic.findById(clinicId).session(session);
-    if (!clinic) {
-      throw new ApiError(404, "Clinic not found");
+    const { location, searchOn, query } = req.query;
+
+    if (!location || !searchOn || !query) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Missing required query parameters: location, searchOn, or query",
+        });
     }
 
-    const doctor = await Doctor.findOne({
-      _id: doctorId,
-      clinics: clinicId,
-    }).session(session);
-    if (!doctor) {
-      throw new ApiError(404, "Doctor not found");
+    let results;
+
+    if (searchOn === "clinic") {
+      // Fetch clinics based on location and query (e.g., specialization or clinic name)
+      results = await Clinic.find({
+        city: location,
+        $or: [
+          { name: { $regex: query, $options: "i" } }, // Case-insensitive search for clinic name
+          { specialization: { $regex: query, $options: "i" } }, // Case-insensitive search for specialization
+        ],
+      });
+    } else if (searchOn === "doctor") {
+      // Fetch doctors based on location and query (e.g., specialization or doctor name)
+      results = await Doctor.find({
+        city: location,
+        $or: [
+          { fullName: { $regex: query, $options: "i" } }, // Case-insensitive search for doctor name
+          { specialization: { $regex: query, $options: "i" } }, // Case-insensitive search for specialization
+        ],
+      });
+    } else {
+      return res
+        .status(400)
+        .json({
+          message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
+        });
     }
 
-    const clinicSchedule = doctor.appointmentsSchedule.find(
-      (schedule) => schedule.clinicId.toString() === clinicId.toString()
-    );
-
-    if (!clinicSchedule) {
-      throw new ApiError(404, "Clinic schedule not found");
+    if (results.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No data found for the given criteria" });
     }
 
-    const scheduleIndex = clinicSchedule.schedule.findIndex(
-      (appointment) => appointment._id.toString() === scheduledId.toString()
-    );
-
-    if (scheduleIndex === -1) {
-      throw new ApiError(404, "Appointment schedule not found");
-    }
-
-    const appointmentDay = clinicSchedule.schedule[scheduleIndex].day;
-    const appointmentTimeFrom =
-      clinicSchedule.schedule[scheduleIndex].startTime;
-    const appointmentTimeTo = clinicSchedule.schedule[scheduleIndex].endTime;
-    const maxSlots = clinicSchedule.schedule[scheduleIndex].maxSlots;
-
-    const bookedSlot = await Appointment.countDocuments({
-      clinicId,
-      doctor: doctorId,
-      appointmentDate,
-      appointmentTimeFrom,
-      appointmentTimeTo,
-    }).session(session);
-
-    if (bookedSlot >= maxSlots) {
-      throw new ApiError(
-        400,
-        "Maximum limit for appointment reached. Please choose another date or time available."
-      );
-    }
-
-    gender = gender.toLowerCase();
-    if (!genders.includes(gender)) {
-      throw new ApiError(400, "Invalid gender");
-    }
-
-    const platForm = await AdminCommission.findOne({}).session(session);
-    const platFormFee = platForm?.platFormFee || 1;
-
-    const metadata = {
-      userId: request.user._id,
-      appointmentDate,
-      doctorId,
-      appointmentDay,
-      appointmentTimeFrom,
-      appointmentTimeTo,
-      fullName,
-      phoneNumber,
-      age,
-      gender,
-      healthInsured,
-      clinicId,
-      billingAddress,
-      termsAccepted,
-    };
-
-    // Create Razorpay order
-    const options = {
-      amount: platFormFee * 100,
-      currency: "INR",
-      receipt: `receipt_${request?.user?._id}`,
-      payment_capture: 1, // Auto capture the payment
-      notes: metadata,
-    };
-
-    const order = await razorpayInstance.orders.create(options);
-
-    // Commit the transaction
-    await session.commitTransaction();
-    session.endSession();
-
-    // Return success response
-    return response.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          order_id: order.id,
-          amount: platFormFee * 100,
-          key_id: process.env.RAZORPAY_KEY_ID,
-          user: request?.user._id,
-        },
-        "Razorpay order created successfully"
-      )
-    );
+    res.status(200).json(results);
   } catch (error) {
-    // Abort the transaction in case of an error
-    await session.abortTransaction();
-    session.endSession();
-
-    // Handle the error
-    throw new ApiError(
-      error.code || 500,
-      error.message || "Something went wrong"
-    );
+    res.status(500).json({ message: error.message });
   }
-});
+};
+
+// export const CREATEAPPOINTMENT = asyncHandler(async (request, response) => {
+//   const {
+//     doctorId,
+//     scheduledId,
+//     fullName,
+//     phoneNumber,
+//     age,
+//     gender,
+//     healthInsured,
+//     clinicId,
+//     billingAddress,
+//     termsAccepted,
+//     appointmentDate,
+//   } = request.body;
+
+//   if (
+//     !doctorId ||
+//     !scheduledId ||
+//     !fullName ||
+//     !phoneNumber ||
+//     !age ||
+//     !gender ||
+//     !clinicId ||
+//     !appointmentDate
+//   ) {
+//     throw new ApiError(400, "All required fields must be filled");
+//   }
+
+//   const validDateRegex =
+//     /^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-(19|20)\d{2}$/;
+//   if (!validDateRegex.test(appointmentDate)) {
+//     throw new ApiError(400, "Invalid date format. Accepted format: dd-mm-yyyy");
+//   }
+
+//   if (
+//     typeof termsAccepted !== "boolean" ||
+//     typeof healthInsured !== "boolean"
+//   ) {
+//     throw new ApiError(
+//       400,
+//       "Terms and conditions and health insurance are required"
+//     );
+//   }
+
+//   if (!termsAccepted) {
+//     throw new ApiError(400, "Please accept the terms and conditions");
+//   }
+
+//   // Start a MongoDB session
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const clinic = await Clinic.findById(clinicId).session(session);
+//     if (!clinic) {
+//       throw new ApiError(404, "Clinic not found");
+//     }
+
+//     const doctor = await Doctor.findOne({
+//       _id: doctorId,
+//       clinics: clinicId,
+//     }).session(session);
+//     if (!doctor) {
+//       throw new ApiError(404, "Doctor not found");
+//     }
+
+//     const clinicSchedule = doctor.appointmentsSchedule.find(
+//       (schedule) => schedule.clinicId.toString() === clinicId.toString()
+//     );
+
+//     if (!clinicSchedule) {
+//       throw new ApiError(404, "Clinic schedule not found");
+//     }
+
+//     const scheduleIndex = clinicSchedule.schedule.findIndex(
+//       (appointment) => appointment._id.toString() === scheduledId.toString()
+//     );
+
+//     if (scheduleIndex === -1) {
+//       throw new ApiError(404, "Appointment schedule not found");
+//     }
+
+//     const appointmentDay = clinicSchedule.schedule[scheduleIndex].day;
+//     const appointmentTimeFrom =
+//       clinicSchedule.schedule[scheduleIndex].startTime;
+//     const appointmentTimeTo = clinicSchedule.schedule[scheduleIndex].endTime;
+//     const maxSlots = clinicSchedule.schedule[scheduleIndex].maxSlots;
+
+//     const bookedSlot = await Appointment.countDocuments({
+//       clinicId,
+//       doctor: doctorId,
+//       appointmentDate,
+//       appointmentTimeFrom,
+//       appointmentTimeTo,
+//     }).session(session);
+
+//     if (bookedSlot >= maxSlots) {
+//       throw new ApiError(
+//         400,
+//         "Maximum limit for appointment reached. Please choose another date or time available."
+//       );
+//     }
+
+//     gender = gender.toLowerCase();
+//     if (!genders.includes(gender)) {
+//       throw new ApiError(400, "Invalid gender");
+//     }
+
+//     const platForm = await AdminCommission.findOne({}).session(session);
+//     const platFormFee = platForm?.platFormFee || 1;
+
+//     const metadata = {
+//       userId: request.user._id,
+//       appointmentDate,
+//       doctorId,
+//       appointmentDay,
+//       appointmentTimeFrom,
+//       appointmentTimeTo,
+//       fullName,
+//       phoneNumber,
+//       age,
+//       gender,
+//       healthInsured,
+//       clinicId,
+//       billingAddress,
+//       termsAccepted,
+//     };
+
+//     // Create Razorpay order
+//     const options = {
+//       amount: platFormFee * 100,
+//       currency: "INR",
+//       receipt: `receipt_${request?.user?._id}`,
+//       payment_capture: 1, // Auto capture the payment
+//       notes: metadata,
+//     };
+
+//     const order = await razorpayInstance.orders.create(options);
+
+//     // Commit the transaction
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     // Return success response
+//     return response.status(200).json(
+//       new ApiResponse(
+//         200,
+//         {
+//           order_id: order.id,
+//           amount: platFormFee * 100,
+//           key_id: process.env.RAZORPAY_KEY_ID,
+//           user: request?.user._id,
+//         },
+//         "Razorpay order created successfully"
+//       )
+//     );
+//   } catch (error) {
+//     // Abort the transaction in case of an error
+//     await session.abortTransaction();
+//     session.endSession();
+
+//     // Handle the error
+//     throw new ApiError(
+//       error.code || 500,
+//       error.message || "Something went wrong"
+//     );
+//   }
+// });

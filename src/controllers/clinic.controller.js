@@ -322,6 +322,20 @@ export const GETCLINICADMINBYID = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, { user: clinicAdmin }, "Clinic admin fetched"));
 });
 
+export const GET_CLINIC_BY_CITIES = asyncHandler(async (req, res) => {
+  const clinics = await Clinic.find({
+    city: req.params.city,
+  });
+
+  if (!clinics) {
+    throw new ApiError(404, "Clinic not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { clinics }, "Clinic fetched"));
+});
+
 // potential update
 export const UPDATE_CLINIC_ADMIN = async (req, res) => {
   try {

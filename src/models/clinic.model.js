@@ -15,6 +15,9 @@ const clinicSchema = new Schema(
     address: {
       type: String,
     },
+    city: {
+      type: String,
+    },
     phoneNumber: {
       type: String,
     },
