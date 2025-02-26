@@ -32,7 +32,10 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
     name,
     email,
     phoneNumber,
-    address,
+    addressOne,
+    city,
+    state,
+    pincode,
     userName,
     password,
     userAddress,
@@ -44,9 +47,18 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
 
   // Validate required fields
   if (
-    [name, email, phoneNumber, password, address, userName, userEmail].some(
-      (field) => field.trim() === ""
-    )
+    [
+      name,
+      email,
+      phoneNumber,
+      addressOne,
+      city,
+      state,
+      pincode,
+      userName,
+      userEmail,
+      password,
+    ].some((field) => field.trim() === "")
   ) {
     throw new ApiError(400, "All fields are required.");
   }
@@ -80,7 +92,10 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
       name,
       email,
       phoneNumber,
-      address,
+      addressOne,
+      city,
+      state,
+      pincode,
       latitude,
       longitude,
     });
@@ -161,9 +176,12 @@ export const LOGINCLINIC = asyncHandler(async (req, res) => {
   );
 
   // Don't send password to front-end
-  const loggedInClinicAdmin = await ClinicAdmin.findById(
-    clinicAdmin._id
-  ).select("-password");
+  const loggedInClinicAdmin = await ClinicAdmin.findById(clinicAdmin._id)
+    .populate(
+      "clinicId",
+      "name email phoneNumber addressOne addressTwo city state pincode"
+    )
+    .select("-password");
 
   const options = {
     httpOnly: true,
@@ -547,84 +565,88 @@ const validDays = [
   "Saturday",
   "Sunday",
 ];
-export const CREATE_DOCTOR = async (req, res) => {
+// clinic must register to add a doctor
+export const CREATE_DOCTOR = asyncHandler(async (request, response) => {
+  const { clinicId } = request.user;
+  let {
+    fullName,
+    email,
+    specialization,
+    registrationNumber,
+    fee,
+    phoneNumber,
+    appointmentsSchedule,
+    qualification,
+    addressLine1,
+    addressLine2,
+    city,
+    gender,
+  } = request.body;
+
+  if (
+    !fullName ||
+    !email ||
+    !specialization ||
+    !registrationNumber ||
+    !fee ||
+    !phoneNumber ||
+    !qualification ||
+    !addressLine1 ||
+    !city ||
+    !gender
+  ) {
+    throw new ApiError(400, "All fields are required");
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    let {
-      fullName,
-      email,
-      specialization,
-      registrationNumber,
-      fee,
-      phoneNumber,
-      appointmentsSchedule,
-    } = req.body;
-
-    const clinicId = req.user.clinicId; // destructuring
-    //* validation, optimize
-    if (
-      !fullName ||
-      !email ||
-      !specialization ||
-      !registrationNumber ||
-      !fee ||
-      isNaN(fee)
-    ) {
-      throw new ApiError(400, "All fields are required");
-    }
-    //* stupidity
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim().toLowerCase())) {
-      return res.status(400).json({ message: "Invalid email format." });
-    }
-    //* stupidity
-    const phoneRegex = /^\+[1-9]\d{0,3}\d{10}$/;
-    if (phoneNumber && !phoneRegex.test(phoneNumber.trim())) {
-      return res.status(400).json({ message: "Invalid phone number format." });
-    }
-
+    // appointment schedule validation
     if (appointmentsSchedule) {
       const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-      // validation
       for (const schedule of appointmentsSchedule) {
         const { day, startTime, endTime, maxSlots } = schedule;
         if (!day || !startTime || !endTime || isNaN(maxSlots)) {
-          return res.status(400).json({
-            message:
-              "Each schedule must include day, startTime, endTime and maxSlots.",
-          });
+          throw new ApiError(
+            400,
+            "Each schedule must include day, startTime, endTime and maxSlots."
+          );
         }
         if (!validDays.includes(day)) {
-          return res.status(400).json({ message: `Invalid day: ${day}` });
+          throw new ApiError(400, `Invalid Day ${day}`);
         }
         if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-          return res.status(400).json({
-            message: `Time should be in 24-hour format (HH:MM) for ${day}`,
-          });
+          throw new ApiError(
+            400,
+            `Time should be in 24-hour format (HH:MM) for ${day}.`
+          );
         }
       }
     }
 
+    // check if doctor is already registered in same clinic
     let doctor = await Doctor.findOne({ registrationNumber });
     if (doctor && doctor.clinics.includes(clinicId)) {
-      return res
-        .status(400)
-        .json({ message: "Doctor already exists in this clinic." });
+      throw new ApiError(400, "Doctor already exists in this clinic");
     }
 
     if (doctor) {
+      // handling conflicting schedule
       if (appointmentsSchedule) {
         const timeToMinutes = (time) => {
           const [hours, minutes] = time.split(":").map(Number);
           return hours * 60 + minutes;
         };
-
+        // iterate through the appointmentsSchedule provided in the request and compare with the doctor schedule in other clinic
         for (const { day, startTime, endTime } of appointmentsSchedule) {
           const startMinutes = timeToMinutes(startTime);
           const endMinutes = timeToMinutes(endTime);
-
+          // iterate through the doctor schedule in other clinic
           for (const clinic of doctor.appointmentsSchedule) {
             if (clinic.clinicId.toString() !== clinicId.toString()) {
+              // conflict detection
               const conflictingSchedule = clinic.schedule.find(
                 (appointment) => {
                   if (appointment.day === day) {
@@ -646,18 +668,19 @@ export const CREATE_DOCTOR = async (req, res) => {
               );
 
               if (conflictingSchedule) {
-                return res.status(400).json({
-                  message: `Time conflict: Doctor is already scheduled at another clinic on ${day} from ${conflictingSchedule.startTime} to ${conflictingSchedule.endTime}.`,
-                });
+                throw new ApiError(
+                  400,
+                  `Time conflict: Doctor is already scheduled at another clinic on ${day} from ${conflictingSchedule.startTime} to ${conflictingSchedule.endTime}.`
+                );
               }
             }
           }
         }
       }
-      fee = parseInt(fee);
-      console.log(fee);
-      doctor.fees.push({ clinicId, fee });
 
+      fee = parseInt(fee);
+      doctor.fees.push({ clinicId, fee });
+      // doctor exists but it is not associated with current clinic
       if (!doctor.clinics.includes(clinicId)) {
         doctor.clinics.push(clinicId);
         if (appointmentsSchedule) {
@@ -666,37 +689,62 @@ export const CREATE_DOCTOR = async (req, res) => {
             schedule: appointmentsSchedule,
           });
         }
-        await doctor.save();
+        await doctor.save({ session });
       }
 
-      return res.status(200).json({
-        message: "Doctor added successfully.",
-        doctor: doctor,
-      });
+      await session.commitTransaction();
+      session.endSession();
+
+      return response
+        .status(201)
+        .json(new ApiResponse(200, "Doctor added successfully"));
     }
 
-    doctor = new Doctor({
-      fullName,
-      email: email,
-      specialization,
-      registrationNumber,
-      fees: [{ clinicId, fee }],
-      phoneNumber,
-      clinics: [clinicId],
-      appointmentsSchedule: appointmentsSchedule
-        ? [{ clinicId, schedule: appointmentsSchedule }]
-        : [],
-    });
+    // create a new user to db
+    const newDoctor = await Doctor.create(
+      [
+        {
+          fullName,
+          email,
+          specialization,
+          registrationNumber,
+          addressLine1,
+          addressLine2,
+          city,
+          gender,
+          fees: [{ clinicId, fee }],
+          clinics: [clinicId],
+          phoneNumber,
+          appointmentsSchedule: appointmentsSchedule
+            ? [{ clinicId, schedule: appointmentsSchedule }]
+            : [],
+        },
+      ],
+      { session }
+    );
 
-    await doctor.save();
-    res.status(201).json({ message: "Doctor created successfully", doctor });
+    // check if user is successfully created
+    const createdDoctor = await Doctor.findById(newDoctor[0]._id)
+      .select("-password")
+      .session(session);
+    // .lean()
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return response
+      .status(201)
+      .json(new ApiResponse(200, "Doctor added successfully", createdDoctor));
   } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
+    await session.abortTransaction();
+    session.endSession();
+
+    throw new ApiError(
+      error.code || 500,
+      error.message || "Something went wrong"
+    );
   }
-};
+});
 
 export const GET_ALL_DOCTORS_BY_CLINIC = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;

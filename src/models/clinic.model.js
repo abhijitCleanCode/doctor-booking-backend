@@ -5,21 +5,36 @@ const clinicSchema = new Schema(
   {
     name: {
       type: String,
-      required: true,
+      required: [true, "Clinic name is required while registering a clinic"],
     },
     email: {
       type: String,
       required: true,
-      unique: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
+      unique: [true, "Email is already in used by some other clinic"],
+      index: true,
     },
-    address: {
+    phoneNumber: {
+      type: String,
+    },
+    addressOne: {
+      type: String,
+    },
+    addressTwo: {
       type: String,
     },
     city: {
       type: String,
+      required: true,
+      index: true,
     },
-    phoneNumber: {
+    state: {
       type: String,
+      required: true,
+    },
+    pincode: {
+      type: String,
+      required: true,
     },
     latitude: {
       type: Number,
@@ -28,7 +43,11 @@ const clinicSchema = new Schema(
       type: Number,
     },
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true } } // Include virtuals in JSON output }
 );
+
+clinicSchema.virtual("fullAddress").get(function () {
+  return `${this.addressOne}, ${this.addressTwo}, ${this.city}, ${this.state}, ${this.pincode}`;
+});
 
 export const Clinic = mongoose.model("Clinic", clinicSchema);

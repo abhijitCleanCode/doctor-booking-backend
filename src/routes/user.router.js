@@ -3,6 +3,8 @@ import { otpLimiter, SEND_OTP } from "../utils/otp.utils.js";
 import {
   APPOINTMENT_WEB_HOOK,
   CREATE_APPOINTMENT,
+  GET_ALL_CITIES,
+  GET_ALL_CLINICS,
   GET_ALL_DATA,
   GET_ALL_DOCTORS,
   GET_CLINIC_DETAILS_FOR_USER,
@@ -23,12 +25,14 @@ userRouter.post("/login", LOGINUSER);
 userRouter.get("/get-user", VERIFY_FOR_USER, GETUSER);
 // update user is yet to implemented
 userRouter.post("/logout", LOGOUTUSER);
+userRouter.get("/clinic/getallclinics", GET_ALL_CLINICS);
+userRouter.get("/clinic/getallcliniccities", GET_ALL_CITIES);
 userRouter.get("/doctors/getalldoctors", GET_ALL_DOCTORS);
 userRouter.get("/doctors/getdoctorbyid/:doctorId", GET_DOCTOR_BY_ID);
 userRouter.get("/clinicdetails/:clinicId", GET_CLINIC_DETAILS_FOR_USER);
 userRouter.post("/create-appointments", VERIFY_FOR_USER, CREATE_APPOINTMENT);
 userRouter.post("/verify-payment", VERIFY_FOR_USER, APPOINTMENT_WEB_HOOK);
-userRouter.get("/get-all-data", VERIFY_FOR_USER, GET_ALL_DATA);
+userRouter.get("/get-all-data", GET_ALL_DATA);
 // get all appointment
 // get appointment by id
 // get doctor slot api is yet to implemented

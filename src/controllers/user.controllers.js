@@ -242,6 +242,66 @@ export const GET_ALL_DOCTORS = asyncHandler(async (req, res) => {
     );
 });
 
+export const GET_ALL_CLINICS = asyncHandler(async (req, res) => {
+  const { populate, limit, page } = req.query;
+
+  // Pagination setup
+  const limitValue = parseInt(limit) || 10;
+  const pageValue = parseInt(page) || 1;
+  const skip = (pageValue - 1) * limitValue;
+
+  // Build the query
+  let query = Clinic.find();
+
+  // Populate doctors if requested
+  if (populate === "true") {
+    query = query.populate("doctors", "fullName specialization");
+  }
+
+  // Apply pagination
+  query = query.skip(skip).limit(limitValue);
+
+  // Execute the query
+  const clinics = await query;
+
+  if (!clinics.length) {
+    throw new ApiError(404, "No clinics found.");
+  }
+
+  // Count total clinics for pagination metadata
+  const totalClinics = await Clinic.countDocuments();
+
+  // Return the response
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        clinics,
+        pagination: {
+          totalClinics,
+          currentPage: pageValue,
+          totalPages: Math.ceil(totalClinics / limitValue),
+        },
+      },
+      "Clinics fetched successfully."
+    )
+  );
+});
+
+export const GET_ALL_CITIES = asyncHandler(async (req, res) => {
+  // Fetch all unique cities from the clinic collection
+  const cities = await Clinic.distinct("city");
+
+  if (!cities.length) {
+    throw new ApiError(404, "No cities found.");
+  }
+
+  // Return the response
+  return res
+    .status(200)
+    .json(new ApiResponse(200, cities, "Cities fetched successfully."));
+});
+
 export const GET_DOCTOR_BY_ID = asyncHandler(async (req, res) => {
   try {
     const doctor = await Doctor.findById(req.params.doctorId);
@@ -650,14 +710,12 @@ export const GET_ALL_DATA = async (req, res) => {
   try {
     const { location, searchOn, query } = req.query;
 
-    if (!location || !searchOn || !query) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Missing required query parameters: location, searchOn, or query",
-        });
-    }
+    // if (!location || !searchOn || !query) {
+    //   return res.status(400).json({
+    //     message:
+    //       "Missing required query parameters: location, searchOn, or query",
+    //   });
+    // }
 
     let results;
 
@@ -680,11 +738,9 @@ export const GET_ALL_DATA = async (req, res) => {
         ],
       });
     } else {
-      return res
-        .status(400)
-        .json({
-          message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
-        });
+      return res.status(400).json({
+        message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
+      });
     }
 
     if (results.length === 0) {

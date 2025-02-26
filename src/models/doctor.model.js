@@ -20,14 +20,17 @@ const doctorSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    medicalDegree: {
+    qualification: {
       type: String,
     },
     registrationNumber: {
       type: String,
       required: true,
     },
-    address: {
+    addressLine1: {
+      type: String,
+    },
+    addressLine2: {
       type: String,
     },
     city: {
