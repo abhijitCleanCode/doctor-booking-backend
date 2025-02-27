@@ -6,12 +6,13 @@ const clinicAdminSchema = new Schema(
   {
     fullName: {
       type: String,
-      required: true,
+      required: [true, "Admin full name is required in clinic admin schema"],
     },
     email: {
       type: String,
-      required: true,
-      unique: true,
+      required: [true, "Email is required in clinic admin schema"],
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
+      lowercase: true,
     },
     password: {
       type: String,
@@ -26,23 +27,31 @@ const clinicAdminSchema = new Schema(
     },
     phoneNumber: {
       type: String,
+      required: [
+        true,
+        "Phone number is required while registering a clinic admin",
+      ],
+      match: [/^\+[1-9]\d{0,3}\d{10}$/, "Invalid phone number format"],
     },
     clinicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Clinic",
+    },
+    refreshToken: {
+      type: String,
     },
   },
   { timestamps: true }
 );
 
 // not working
-// clinicAdminSchema.pre("save", async function (next) {
-//   if (!this.isModified("password")) {
-//     return next();
-//   }
-//   this.password = bcrypt.hash(this.password, 10);
-//   next();
-// });
+clinicAdminSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) {
+    return next();
+  }
+  this.password = await bcrypt.hash(this.password, 10);
+  next();
+});
 
 clinicAdminSchema.methods.comparePassword = async function (candidatePassword) {
   console.log("candidate password :: ", candidatePassword);

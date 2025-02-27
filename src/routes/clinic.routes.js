@@ -7,11 +7,11 @@ import {
   GET_ALL_APPOINTMENTS_CLINIC,
   GET_ALL_DOCTORS_BY_CLINIC,
   GET_CLINIC_BY_CITIES,
-  GET_CLINICS_DETAILS,
   GET_DOCTOR_BY_ID,
   GET_DOCTOR_BY_REGISTRATION_NUMBER,
   GETALLCLINICADMINS,
   GETCLINICADMINBYID,
+  GETCLINICDETAILS,
   LOGINCLINIC,
   SIGNUPCLINIC,
   UPDATE_CLINIC_ADMIN,
@@ -25,7 +25,7 @@ const clinicRouter = Router();
 clinicRouter.post("/sign-up", SIGNUPCLINIC);
 clinicRouter.post("/login", LOGINCLINIC);
 clinicRouter.post("/create-admin", VERIFY_FOR_CLINIC, CREATE_CLINIC_ADMIN);
-clinicRouter.get("/get-clinic-details", VERIFY_FOR_CLINIC, GET_CLINICS_DETAILS);
+clinicRouter.get("/get-clinic-details", VERIFY_FOR_CLINIC, GETCLINICDETAILS);
 clinicRouter.put("/update-clinic", VERIFY_FOR_CLINIC, UPDATE_CLINIC_DETAILS);
 clinicRouter.get(
   "/get-all-clinic-admin",

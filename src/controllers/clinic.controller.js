@@ -87,62 +87,67 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
       throw new ApiError(409, "Clinic admin already exists.");
     }
 
-    // Create clinic
-    const clinic = new Clinic({
-      name,
-      email,
-      phoneNumber,
-      addressOne,
-      city,
-      state,
-      pincode,
-      latitude,
-      longitude,
-    });
-    const savedClinic = await clinic.save({ session });
+    const clinic = await Clinic.create(
+      [
+        {
+          name,
+          email,
+          phoneNumber,
+          addressOne,
+          city,
+          state,
+          pincode,
+          latitude,
+          longitude,
+        },
+      ],
+      { session }
+    );
+    const savedClinic = await Clinic.findById(clinic[0]._id).session(session);
+    if (!savedClinic) {
+      throw new ApiError(500, "Uh oh!, Clinic not registered");
+    }
 
-    const hashPassword = await bcrypt.hash(password, 10);
+    const clinicAdmin = await ClinicAdmin.create(
+      [
+        {
+          fullName: userName,
+          email: userEmail,
+          phoneNumber: userPhoneNumber,
+          address: userAddress,
+          password,
+          clinicId: savedClinic._id,
+        },
+      ],
+      { session }
+    );
+    const savedClinicUser = await ClinicAdmin.findById(clinicAdmin[0]._id)
+      .select("-password")
+      .session(session);
+    if (!savedClinicUser) {
+      throw new ApiError(500, "Uh oh!, Clinic admin not registered");
+    }
 
-    // Create clinic admin
-    const clinicAdmin = new ClinicAdmin({
-      fullName: userName,
-      email: userEmail,
-      phoneNumber: userPhoneNumber,
-      address: userAddress,
-      password: hashPassword,
-      clinicId: savedClinic._id,
-    });
-    const savedUser = await clinicAdmin.save({ session });
-
-    // Remove sensitive fields from the user object
-    const userObject = savedUser.toObject();
-    delete userObject.password;
-
-    // Generate tokens
     const { accessToken, refreshToken } = generateAccessToken_RefreshToken(
-      savedUser._id
+      savedClinicUser._id
     );
 
-    // Commit the transaction
     await session.commitTransaction();
     session.endSession();
 
-    // Return success response
     return res
       .status(201)
       .json(
         new ApiResponse(
           201,
-          { userObject, savedClinic, accessToken, refreshToken },
+          { savedClinic, savedClinicUser, accessToken, refreshToken },
           "Clinic created successfully."
         )
       );
   } catch (error) {
-    // Abort the transaction in case of an error
     await session.abortTransaction();
     session.endSession();
 
-    // Handle the error
     throw new ApiError(
       error.code || 500,
       error.message || "Internal Server Error"
@@ -202,15 +207,29 @@ export const LOGINCLINIC = asyncHandler(async (req, res) => {
 });
 
 export const GETCLINICDETAILS = asyncHandler(async (req, res) => {
-  const clinic = await Clinic.findById(req.user.clinicId);
+  const { clinicId } = req.user;
 
+  const clinic = await Clinic.findById(clinicId);
   if (!clinic) {
     throw new ApiError(404, "Clinic not found");
   }
 
+  const clinicUser = await ClinicAdmin.find({ clinicId }).select(
+    "-password -refreshToken -clinicId"
+  );
+  if (!clinicUser) {
+    throw new ApiError(404, "Clinic admin not found");
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, { clinicDetails: clinic }, "Clinic fetched"));
+    .json(
+      new ApiResponse(
+        200,
+        { clinicDetails: clinic, clinicUser },
+        "Clinic fetched"
+      )
+    );
 });
 
 export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
@@ -230,7 +249,6 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
-  // Start a MongoDB session
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -243,7 +261,6 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
       throw new ApiError(409, "Clinic admin already exists");
     }
 
-    // create a new user to db
     const clinicAdmin = await ClinicAdmin.create(
       [
         {
@@ -258,7 +275,6 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
       { session }
     );
 
-    // check if user is successfully created
     const createdClinicAdmin = await ClinicAdmin.findById(clinicAdmin[0]._id)
       .select("-password")
       .session(session);
@@ -266,11 +282,9 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
       throw new ApiError(500, "Clinic admin not registered");
     }
 
-    // Commit the transaction
     await session.commitTransaction();
     session.endSession();
 
-    // Return success response
     return res
       .status(201)
       .json(
@@ -281,11 +295,9 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
         )
       );
   } catch {
-    // Abort the transaction in case of an error
     await session.abortTransaction();
     session.endSession();
 
-    // Handle the error
     throw new ApiError(
       error.code || 500,
       error.message || "Something went wrong while creating clinic admin"
@@ -295,30 +307,31 @@ export const CREATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
 
 // fetch a paginated list of clinic admins associated with a specific clinic.
 export const GETALLCLINICADMINS = asyncHandler(async (req, res) => {
+  const { clinicId } = req.user;
+
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit);
   const skip = (page - 1) * limit;
 
   const totalUsers = await ClinicAdmin.countDocuments({
-    clinicId: req.user.clinicId,
+    clinicId,
   });
   const totalPages = Math.ceil(totalUsers / limit);
 
   const clinicAdmins = await ClinicAdmin.find({
-    clinicId: req.user.clinicId,
+    clinicId,
   })
-    .select("-password")
+    .select("-password -refreshToken")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
 
-  // Return success response
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        { users: clinicAdmins, totalPages: totalPages || 1 },
+        { users: clinicAdmins, totalPages: totalPages || 1, totalUsers },
         "Clinic admins fetched successfully."
       )
     );
@@ -326,10 +339,18 @@ export const GETALLCLINICADMINS = asyncHandler(async (req, res) => {
 
 // potential update use destructuring
 export const GETCLINICADMINBYID = asyncHandler(async (req, res) => {
+  const { clinicId } = req.user;
+  const { userId } = req.params;
+
   const clinicAdmin = await ClinicAdmin.findById({
-    _id: req.params.userId,
-    clinicId: req.user.clinicId,
-  }).select("-password");
+    _id: userId,
+    clinicId,
+  })
+    .populate(
+      "clinicId",
+      "name email phoneNumber addressOne addressTwo city state pincode"
+    )
+    .select("-password -refreshToken");
 
   if (!clinicAdmin) {
     throw new ApiError(404, "Clinic admin not found");
@@ -341,8 +362,10 @@ export const GETCLINICADMINBYID = asyncHandler(async (req, res) => {
 });
 
 export const GET_CLINIC_BY_CITIES = asyncHandler(async (req, res) => {
+  const { city } = req.params;
+
   const clinics = await Clinic.find({
-    city: req.params.city,
+    city: { $regex: new RegExp(`^${city}$`, "i") },
   });
 
   if (!clinics) {
@@ -354,75 +377,61 @@ export const GET_CLINIC_BY_CITIES = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, { clinics }, "Clinic fetched"));
 });
 
-// potential update
-export const UPDATE_CLINIC_ADMIN = async (req, res) => {
-  try {
-    let { fullName, email, address, phoneNumber } = req.body;
-    // fetch the clinic admin, user === clinic_admin
-    const user = await ClinicAdmin.findOne({
-      // use destructuring
-      _id: req.params.userId,
-      clinicId: req.user.clinicId,
-    });
+export const UPDATE_CLINIC_ADMIN = asyncHandler(async (req, res) => {
+  const { fullName, email, address, phoneNumber } = req.body;
+  const { userId } = req.params;
+  const { clinicId } = req.user;
 
-    if (email) {
-      // validate email via mongoose
-      email = email.trim().toLowerCase();
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: "Invalid email format." });
-      }
-      // check: new email must not be same as previous email
-      if (email !== user.email) {
-        const existingUser = await ClinicAdmin.findOne({ email });
-        if (existingUser) {
-          return res.status(400).json({ message: "Email already in use." });
-        }
-        user.email = email;
-      }
-    }
-
-    if (phoneNumber) {
-      // validate phone via mongoose
-      phoneNumber = phoneNumber.trim();
-      const phoneRegex = /^\+[1-9]\d{0,3}\d{10}$/;
-      if (!phoneRegex.test(phoneNumber)) {
-        return res
-          .status(400)
-          .json({ message: "Invalid phone number format." });
-      }
-      // what! nonsense no checking for phone, hahahah...
-      user.phoneNumber = phoneNumber;
-    }
-    if (fullName) {
-      user.fullName = fullName;
-    }
-    if (address) {
-      user.address = address;
-    }
-    await user.save();
-
-    const userObject = user.toObject();
-    delete userObject.password;
-
-    res
-      .status(200)
-      .json({ message: "Clinic admin updated successfully", user: userObject });
-  } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
+  const phoneRegex = /^\+[1-9]\d{0,3}\d{10}$/;
+  if (phoneNumber && !phoneRegex.test(phoneNumber)) {
+    throw new ApiError(400, "Invalid phone number format.");
   }
-};
 
-// potential update
-export const UPDATE_CLINIC_DETAILS = async (req, res) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (email && !emailRegex.test(email)) {
+    throw new ApiError(400, "Invalid email format.");
+  }
+
+  const user = await ClinicAdmin.findOne({
+    _id: userId,
+    clinicId,
+  });
+
+  if (!user) {
+    throw new ApiError(404, "Clinic admin not found.");
+  }
+
+  if (email && email !== user.email) {
+    const existingUser = await ClinicAdmin.findOne({ email });
+    if (existingUser) {
+      throw new ApiError(409, "Email already in use.");
+    }
+    user.email = email;
+  }
+
+  if (fullName) user.fullName = fullName;
+  if (address) user.address = address;
+  if (phoneNumber) user.phoneNumber = phoneNumber;
+
+  await user.save();
+
+  const userObject = user.toObject();
+  delete userObject.password;
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, userObject, "Clinic admin updated successfully.")
+    );
+});
+
+export const UPDATE_CLINIC_DETAILS = asyncHandler(async (req, res) => {
+  const { name, email, address, phoneNumber, latitude, longitude } = req.body;
+  const { clinicId } = req.user;
+
   try {
-    let { name, email, address, phoneNumber, latitude, longitude } = req.body;
     // get target clinic, the one whose details will be update from db
-    const clinic = await Clinic.findById(req.user.clinicId); // use destructuring
-    // validation
+    const clinic = await Clinic.findById(clinicId);
     if (!clinic) {
       return res.status(404).json({ message: "Clinic not found" });
     }
@@ -483,7 +492,7 @@ export const UPDATE_CLINIC_DETAILS = async (req, res) => {
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
   }
-};
+});
 
 // potential update
 export const DELETE_CLINIC_ADMIN = async (req, res) => {
@@ -513,23 +522,6 @@ export const DELETE_CLINIC_ADMIN = async (req, res) => {
   }
 };
 
-export const GET_CLINICS_DETAILS = async (req, res) => {
-  try {
-    const clinicId = req.user.clinicId; // destructuring
-    const clinic = await Clinic.findById(clinicId);
-    if (!clinic) {
-      return res.status(404).json({ message: "Clinic not found" });
-    }
-
-    return res.status(200).json({ clinicDetails: clinic });
-  } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
-  }
-};
-
 export const GET_DOCTOR_BY_REGISTRATION_NUMBER = async (req, res) => {
   try {
     const registrationNumber = req.params.registrationNumber;
@@ -541,11 +533,7 @@ export const GET_DOCTOR_BY_REGISTRATION_NUMBER = async (req, res) => {
 
     const doctor = await Doctor.findOne({
       registrationNumber: registrationNumber,
-    });
-    // this is a get api, then why the hell this stupid validation. We are not registraring doctor, we are getting the doctor by registration number.
-    // if (doctor && doctor.clinics.includes(req.user.clinicId)) {
-    //   return res.status(200).json({ message: "Doctor is already registered." });
-    // }
+    }).lean();
 
     return res.status(200).json({ data: doctor });
   } catch (error) {
@@ -726,8 +714,8 @@ export const CREATE_DOCTOR = asyncHandler(async (request, response) => {
     // check if user is successfully created
     const createdDoctor = await Doctor.findById(newDoctor[0]._id)
       .select("-password")
-      .session(session);
-    // .lean()
+      .session(session)
+      .lean(); // don't return a complete mongoose doc return a pojo
 
     await session.commitTransaction();
     session.endSession();
@@ -1051,7 +1039,7 @@ export const GET_ALL_APPOINTMENTS_CLINIC = asyncHandler(async (req, res) => {
   const clinicId = req.user.clinicId;
 
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10; // Default limit to 10 if not provided
+  const limit = parseInt(req.query.limit) || 10;
   const skip = (page - 1) * limit;
 
   // Get total appointment count

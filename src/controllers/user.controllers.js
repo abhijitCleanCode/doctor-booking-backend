@@ -724,8 +724,8 @@ export const GET_ALL_DATA = async (req, res) => {
       results = await Clinic.find({
         city: location,
         $or: [
-          { name: { $regex: query, $options: "i" } }, // Case-insensitive search for clinic name
-          { specialization: { $regex: query, $options: "i" } }, // Case-insensitive search for specialization
+          { name: { $regex: query, $options: "i" } },
+          { specialization: { $regex: query, $options: "i" } },
         ],
       });
     } else if (searchOn === "doctor") {
@@ -733,8 +733,8 @@ export const GET_ALL_DATA = async (req, res) => {
       results = await Doctor.find({
         city: location,
         $or: [
-          { fullName: { $regex: query, $options: "i" } }, // Case-insensitive search for doctor name
-          { specialization: { $regex: query, $options: "i" } }, // Case-insensitive search for specialization
+          { fullName: { $regex: query, $options: "i" } },
+          { specialization: { $regex: query, $options: "i" } },
         ],
       });
     } else {

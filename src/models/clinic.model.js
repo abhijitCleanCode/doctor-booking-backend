@@ -1,5 +1,4 @@
 import mongoose, { Schema } from "mongoose";
-import bcrypt from "bcrypt";
 
 const clinicSchema = new Schema(
   {
@@ -9,7 +8,7 @@ const clinicSchema = new Schema(
     },
     email: {
       type: String,
-      required: true,
+      required: [true, "Email is required while registering a clinic"],
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
       unique: [true, "Email is already in used by some other clinic"],
       index: true,
@@ -25,16 +24,16 @@ const clinicSchema = new Schema(
     },
     city: {
       type: String,
-      required: true,
+      required: [true, "City is required while registering a clinic"],
       index: true,
     },
     state: {
       type: String,
-      required: true,
+      required: [true, "State is required while registering a clinic"],
     },
     pincode: {
       type: String,
-      required: true,
+      required: [true, "Pincode is required while registering a clinic"],
     },
     latitude: {
       type: Number,
@@ -43,7 +42,7 @@ const clinicSchema = new Schema(
       type: Number,
     },
   },
-  { timestamps: true, toJSON: { virtuals: true } } // Include virtuals in JSON output }
+  { timestamps: true, toJSON: { virtuals: true } } // Include virtuals in JSON output
 );
 
 clinicSchema.virtual("fullAddress").get(function () {
