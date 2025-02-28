@@ -61,7 +61,7 @@ export const VERIFY_FOR_USER = asyncHandler(async (req, _, next) => {
   try {
     const token =
       req.cookies?.accessToken ||
-      req.header("Authorization")?.replace("Bearer ", ""); // Fixing "Brearer" typo
+      req.header("Authorization")?.replace("Bearer ", ""); // Fixing "Bearer" typo
 
     console.log("auth middleware :: token : ", token);
 
