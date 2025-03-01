@@ -181,12 +181,9 @@ export const LOGINCLINIC = asyncHandler(async (req, res) => {
   );
 
   // Don't send password to front-end
-  const loggedInClinicAdmin = await ClinicAdmin.findById(clinicAdmin._id)
-    .populate(
-      "clinicId",
-      "name email phoneNumber addressOne addressTwo city state pincode"
-    )
-    .select("-password");
+  const loggedInClinicAdmin = await ClinicAdmin.findById(
+    clinicAdmin._id
+  ).select("-password");
 
   const options = {
     httpOnly: true,
@@ -579,9 +576,6 @@ export const CREATE_DOCTOR = asyncHandler(async (request, response) => {
     !fee ||
     !phoneNumber ||
     !qualification ||
-    !addressLine1 ||
-    !city ||
-    !gender
   ) {
     throw new ApiError(400, "All fields are required");
   }
