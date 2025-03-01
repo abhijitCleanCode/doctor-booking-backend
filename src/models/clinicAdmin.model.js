@@ -18,21 +18,21 @@ const clinicAdminSchema = new Schema(
       type: String,
       required: true,
     },
-    address: {
-      type: String,
-    },
+    // address: {
+    //   type: String,
+    // },
     role: {
       type: String,
       default: "clinic",
     },
-    phoneNumber: {
-      type: String,
-      required: [
-        true,
-        "Phone number is required while registering a clinic admin",
-      ],
-      match: [/^\+[1-9]\d{0,3}\d{10}$/, "Invalid phone number format"],
-    },
+    // phoneNumber: {
+    //   type: String,
+    //   required: [
+    //     true,
+    //     "Phone number is required while registering a clinic admin",
+    //   ],
+    //   match: [/^\+[1-9]\d{0,3}\d{10}$/, "Invalid phone number format"],
+    // },
     clinicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Clinic",

@@ -38,9 +38,7 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
     pincode,
     userName,
     password,
-    userAddress,
     userEmail,
-    userPhoneNumber,
     latitude,
     longitude,
   } = req.body;
@@ -113,8 +111,6 @@ export const SIGNUPCLINIC = asyncHandler(async (req, res) => {
         {
           fullName: userName,
           email: userEmail,
-          phoneNumber: userPhoneNumber,
-          address: userAddress,
           password,
           clinicId: savedClinic._id,
         },
