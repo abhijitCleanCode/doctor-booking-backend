@@ -566,12 +566,10 @@ export const CREATE_DOCTOR = asyncHandler(async (request, response) => {
 
   if (
     !fullName ||
-    !email ||
     !specialization ||
     !registrationNumber ||
     !fee ||
-    !phoneNumber ||
-    !qualification
+    !phoneNumber
   ) {
     throw new ApiError(400, "All fields are required");
   }
