@@ -723,33 +723,15 @@ export const CREATE_DOCTOR = asyncHandler(async (request, response) => {
 });
 
 export const GET_ALL_DOCTORS_BY_CLINIC = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10; // Default limit if not provided
-  const skip = (page - 1) * limit;
-
-  // Fetch total doctor count
-  const totalDoctors = await Doctor.countDocuments({
-    clinics: req.user.clinicId,
-  });
-  const totalPages = Math.ceil(totalDoctors / limit) || 1;
-
   // Fetch doctors with pagination
   const doctors = await Doctor.find({ clinics: req.user.clinicId })
     .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .select("-__v");
-
+    .select("-__v")
+    .lean();
   // Return success response
   return res
     .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { doctors, totalPages },
-        "Doctors fetched successfully."
-      )
-    );
+    .json(new ApiResponse(200, { doctors }, "Doctors fetched successfully."));
 });
 
 export const GET_DOCTOR_BY_ID = asyncHandler(async (req, res) => {

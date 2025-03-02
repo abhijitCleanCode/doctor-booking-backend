@@ -705,45 +705,79 @@ export const GET_DOCTOR_SLOTS = asyncHandler(async (req, res) => {
     );
   }
 });
-
 export const GET_ALL_DATA = async (req, res) => {
   try {
-    const { location, searchOn, query } = req.query;
-
-    // if (!location || !searchOn || !query) {
-    //   return res.status(400).json({
-    //     message:
-    //       "Missing required query parameters: location, searchOn, or query",
-    //   });
-    // }
+    const { location = "All", searchOn = "All", query } = req.query;
 
     let results;
 
-    if (searchOn === "clinic") {
-      // Fetch clinics based on location and query (e.g., specialization or clinic name)
-      results = await Clinic.find({
-        city: location,
-        $or: [
-          { name: { $regex: query, $options: "i" } },
-          { specialization: { $regex: query, $options: "i" } },
-        ],
-      });
-    } else if (searchOn === "doctor") {
-      // Fetch doctors based on location and query (e.g., specialization or doctor name)
-      results = await Doctor.find({
-        city: location,
-        $or: [
-          { fullName: { $regex: query, $options: "i" } },
-          { specialization: { $regex: query, $options: "i" } },
-        ],
-      });
-    } else {
-      return res.status(400).json({
-        message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
-      });
+    if (searchOn === "All" && location === "All") {
+      // Fetch all data from both Doctor and Clinic models
+      const [doctors, clinics] = await Promise.all([
+        Doctor.find({}),
+        Clinic.find({}),
+      ]);
+      results = { doctors, clinics };
+    } else if (searchOn === "All" && location !== "All") {
+      // Fetch all data from both Doctor and Clinic models for the specified location
+      const [doctors, clinics] = await Promise.all([
+        Doctor.find({ city: location }),
+        Clinic.find({ city: location }),
+      ]);
+      results = { doctors, clinics };
+    } else if (searchOn !== "All" && location === "All") {
+      // Fetch all data from the selected model (Doctor or Clinic) without filtering by location
+      if (searchOn === "doctor") {
+        results = await Doctor.find({
+          $or: [
+            { fullName: { $regex: query, $options: "i" } },
+            { specialization: { $regex: query, $options: "i" } },
+          ],
+        });
+      } else if (searchOn === "clinic") {
+        results = await Clinic.find({
+          $or: [
+            { name: { $regex: query, $options: "i" } },
+            { specialization: { $regex: query, $options: "i" } },
+          ],
+        });
+      } else {
+        return res.status(400).json({
+          message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
+        });
+      }
+    } else if (searchOn !== "All" && location !== "All") {
+      // Fetch data from the selected model (Doctor or Clinic) for the specified location
+      if (searchOn === "doctor") {
+        results = await Doctor.find({
+          city: location,
+          $or: [
+            { fullName: { $regex: query, $options: "i" } },
+            { specialization: { $regex: query, $options: "i" } },
+          ],
+        });
+      } else if (searchOn === "clinic") {
+        results = await Clinic.find({
+          city: location,
+          $or: [
+            { name: { $regex: query, $options: "i" } },
+            { specialization: { $regex: query, $options: "i" } },
+          ],
+        });
+      } else {
+        return res.status(400).json({
+          message: 'Invalid value for searchOn. Use "clinic" or "doctor".',
+        });
+      }
     }
 
-    if (results.length === 0) {
+    if (
+      (Array.isArray(results) && results.length === 0) ||
+      (typeof results === "object" &&
+        Object.keys(results).length === 0 &&
+        results.doctors.length === 0 &&
+        results.clinics.length === 0)
+    ) {
       return res
         .status(404)
         .json({ message: "No data found for the given criteria" });
