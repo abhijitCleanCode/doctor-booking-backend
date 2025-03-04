@@ -33,9 +33,6 @@ const doctorSchema = new mongoose.Schema(
     addressLine2: {
       type: String,
     },
-    city: {
-      type: String,
-    },
     clinics: [
       {
         type: mongoose.Schema.Types.ObjectId,

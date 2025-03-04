@@ -705,9 +705,18 @@ export const GET_DOCTOR_SLOTS = asyncHandler(async (req, res) => {
     );
   }
 });
+
 export const GET_ALL_DATA = async (req, res) => {
   try {
-    const { location = "All", searchOn = "All", query } = req.query;
+    let { location = "All", searchOn = "All", query } = req.query;
+
+    if (!location) {
+      location = "All";
+    }
+
+    if (!searchOn) {
+      searchOn = "All";
+    }
 
     let results;
 
@@ -719,12 +728,37 @@ export const GET_ALL_DATA = async (req, res) => {
       ]);
       results = { doctors, clinics };
     } else if (searchOn === "All" && location !== "All") {
-      // Fetch all data from both Doctor and Clinic models for the specified location
-      const [doctors, clinics] = await Promise.all([
-        Doctor.find({ city: location }),
-        Clinic.find({ city: location }),
-      ]);
-      results = { doctors, clinics };
+      // Fetch all clinics in the specified city
+      const clinicsInCity = await Clinic.find({ city: location });
+
+      // Extract clinic IDs
+      const clinicIds = clinicsInCity.map((clinic) => clinic._id);
+
+      // Fetch all doctors associated with these clinics
+      const doctorsInCity = await Doctor.find({
+        clinics: { $in: clinicIds },
+      }).populate("clinics", "name city");
+
+      results = { doctors: doctorsInCity, clinics: clinicsInCity };
+    } else if (searchOn === "specialization") {
+      if (location === "All") {
+        // Fetch all doctors with the specified specialization
+        results = await Doctor.find({
+          specialization: { $regex: query, $options: "i" },
+        }).populate("clinics", "name city");
+      } else {
+        // Fetch all clinics in the specified city
+        const clinicsInCity = await Clinic.find({ city: location });
+
+        // Extract clinic IDs
+        const clinicIds = clinicsInCity.map((clinic) => clinic._id);
+
+        // Fetch doctors with the specified specialization and associated with these clinics
+        results = await Doctor.find({
+          specialization: { $regex: query, $options: "i" },
+          clinics: { $in: clinicIds },
+        }).populate("clinics", "name city");
+      }
     } else if (searchOn !== "All" && location === "All") {
       // Fetch all data from the selected model (Doctor or Clinic) without filtering by location
       if (searchOn === "doctor") {
@@ -749,13 +783,20 @@ export const GET_ALL_DATA = async (req, res) => {
     } else if (searchOn !== "All" && location !== "All") {
       // Fetch data from the selected model (Doctor or Clinic) for the specified location
       if (searchOn === "doctor") {
+        // Fetch all clinics in the specified city
+        const clinicsInCity = await Clinic.find({ city: location });
+
+        // Extract clinic IDs
+        const clinicIds = clinicsInCity.map((clinic) => clinic._id);
+
+        // Fetch doctors associated with these clinics and match the query
         results = await Doctor.find({
-          city: location,
+          clinics: { $in: clinicIds },
           $or: [
             { fullName: { $regex: query, $options: "i" } },
             { specialization: { $regex: query, $options: "i" } },
           ],
-        });
+        }).populate("clinics", "name city");
       } else if (searchOn === "clinic") {
         results = await Clinic.find({
           city: location,
@@ -775,8 +816,8 @@ export const GET_ALL_DATA = async (req, res) => {
       (Array.isArray(results) && results.length === 0) ||
       (typeof results === "object" &&
         Object.keys(results).length === 0 &&
-        results.doctors.length === 0 &&
-        results.clinics.length === 0)
+        results.doctors?.length === 0 &&
+        results.clinics?.length === 0)
     ) {
       return res
         .status(404)
